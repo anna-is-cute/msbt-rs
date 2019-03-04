@@ -33,14 +33,14 @@ pub enum SectionTag {
 
 #[derive(Debug)]
 pub struct Msbt {
-  header: Header,
-  section_order: Vec<SectionTag>,
-  lbl1: Option<Lbl1>,
-  nli1: Option<Nli1>,
-  ato1: Option<Ato1>,
-  atr1: Option<Atr1>,
-  tsy1: Option<Tsy1>,
-  txt2: Option<Txt2>,
+  pub header: Header,
+  pub section_order: Vec<SectionTag>,
+  pub lbl1: Option<Lbl1>,
+  pub nli1: Option<Nli1>,
+  pub ato1: Option<Ato1>,
+  pub atr1: Option<Atr1>,
+  pub tsy1: Option<Tsy1>,
+  pub txt2: Option<Txt2>,
 }
 
 impl Msbt {
@@ -502,15 +502,15 @@ impl<R: Read + Seek> MsbtReader<R> {
 
 #[derive(Debug)]
 pub struct Header {
-  magic: [u8; 8],
-  endianness: Endianness,
-  _unknown_1: u16,
-  encoding: Encoding,
-  _unknown_2: u8,
-  len: u16,
-  _unknown_3: u16,
-  file_size: u32,
-  padding: [u8; 10],
+  pub magic: [u8; 8],
+  pub endianness: Endianness,
+  pub _unknown_1: u16,
+  pub encoding: Encoding,
+  pub _unknown_2: u8,
+  pub len: u16,
+  pub _unknown_3: u16,
+  pub file_size: u32,
+  pub padding: [u8; 10],
 }
 
 impl Header {
@@ -578,63 +578,61 @@ pub enum Encoding {
 
 #[derive(Debug)]
 pub struct Section {
-  magic: [u8; 4],
-  size: u32,
-  padding: [u8; 8],
+  pub magic: [u8; 4],
+  pub size: u32,
+  pub padding: [u8; 8],
 }
 
 #[derive(Debug)]
 pub struct Lbl1 {
-  section: Section,
-  group_count: u32,
-  groups: Vec<Group>,
-  labels: Vec<Label>,
+  pub section: Section,
+  pub group_count: u32,
+  pub groups: Vec<Group>,
+  pub labels: Vec<Label>,
 }
 
 #[derive(Debug)]
 pub struct Group {
-  label_count: u32,
-  offset: u32,
+  pub label_count: u32,
+  pub offset: u32,
 }
 
 #[derive(Debug)]
 pub struct Label {
-  name: String,
-  index: u32,
-  checksum: u32,
-  value: String,
+  pub name: String,
+  pub index: u32,
+  pub checksum: u32,
+  pub value: String,
 }
 
 #[derive(Debug)]
 pub struct Nli1 {
-  section: Section,
-  id_count: u32,
-
-  global_ids: BTreeMap<u32, u32>,
+  pub section: Section,
+  pub id_count: u32,
+  pub global_ids: BTreeMap<u32, u32>,
 }
 
 #[derive(Debug)]
 pub struct Ato1 {
-  section: Section,
-  _unknown: Vec<u8>, // large collection of 0xFF
+  pub section: Section,
+  pub _unknown: Vec<u8>, // large collection of 0xFF
 }
 
 #[derive(Debug)]
 pub struct Atr1 {
-  section: Section,
-  _unknown: Vec<u8>, // tons of unknown data
+  pub section: Section,
+  pub _unknown: Vec<u8>, // tons of unknown data
 }
 
 #[derive(Debug)]
 pub struct Tsy1 {
-  section: Section,
-  _unknown: Vec<u8>, // tons of unknown data
+  pub section: Section,
+  pub _unknown: Vec<u8>, // tons of unknown data
 }
 
 #[derive(Debug)]
 pub struct Txt2 {
-  section: Section,
-  string_count: u32,
-
-  strings: Vec<String>,
+  pub section: Section,
+  pub string_count: u32,
+  pub strings: Vec<String>,
 }
