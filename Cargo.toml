@@ -1,0 +1,12 @@
+[package]
+name = "msbt"
+version = "0.1.0"
+authors = ["Kyle Clemens <git@kyleclemens.com>"]
+edition = "2018"
+
+[dependencies]
+byteordered = "0.4"
+
+[[bin]]
+name = "read_write"
+path = "bin/read_write.rs"
