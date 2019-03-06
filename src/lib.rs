@@ -360,6 +360,7 @@ impl<R: Read + Seek> MsbtReader<R> {
           index,
           checksum,
           value: Default::default(), // value not parsed until later
+          value_raw: Default::default(),
         });
       }
     }
@@ -411,6 +412,7 @@ impl<R: Read + Seek> MsbtReader<R> {
 
     let mut offsets = Vec::with_capacity(string_count);
     let mut strings = Vec::with_capacity(string_count);
+    let mut raw_strings = Vec::with_capacity(string_count);
 
     for _ in 0..string_count {
       offsets.push(self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?);
@@ -428,9 +430,11 @@ impl<R: Read + Seek> MsbtReader<R> {
       let value = match self.header.encoding {
         Encoding::Utf8 => String::from_utf8(str_buf).map_err(Error::InvalidUtf8)?,
         Encoding::Utf16 => {
+          println!("str_buf: {:?}", str_buf);
           let u16s = (0..str_buf.len() / 2)
             .map(|i| self.header.endianness.read_u16(&str_buf[i * 2..]).map_err(Error::Io))
             .collect::<Result<Vec<u16>>>()?;
+          raw_strings.push(str_buf);
           String::from_utf16(&u16s).map_err(Error::InvalidUtf16)?
         },
       };
@@ -441,6 +445,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     if let Some(ref mut lbl1) = self.lbl1 {
       for label in &mut lbl1.labels {
         label.value = strings[label.index as usize].clone();
+        label.value_raw = raw_strings[label.index as usize].clone();
       }
     }
 
@@ -448,6 +453,7 @@ impl<R: Read + Seek> MsbtReader<R> {
       section,
       string_count: string_count as u32,
       strings,
+      raw_strings,
     })
   }
 
@@ -603,6 +609,7 @@ pub struct Label {
   pub index: u32,
   pub checksum: u32,
   pub value: String,
+  pub value_raw: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -635,4 +642,5 @@ pub struct Txt2 {
   pub section: Section,
   pub string_count: u32,
   pub strings: Vec<String>,
+  pub raw_strings: Vec<Vec<u8>>,
 }
