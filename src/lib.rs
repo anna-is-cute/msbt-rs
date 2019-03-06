@@ -644,3 +644,14 @@ pub struct Txt2 {
   pub strings: Vec<String>,
   pub raw_strings: Vec<Vec<u8>>,
 }
+
+impl Txt2 {
+  pub fn update_section(&mut self) {
+    self.string_count = self.strings.len() as u32;
+    let all_str_len = self.strings.iter().flat_map(|x| x.encode_utf16()).count() * 2;
+    let new_size = all_str_len // length of all strings
+      + self.string_count as usize * std::mem::size_of::<u32>() // all offsets
+      + std::mem::size_of_val(&self.string_count); // length of string count
+    self.section.size = new_size as u32;
+  }
+}
