@@ -430,7 +430,7 @@ impl<R: Read + Seek> MsbtReader<R> {
       let value = match self.header.encoding {
         Encoding::Utf8 => String::from_utf8(str_buf).map_err(Error::InvalidUtf8)?,
         Encoding::Utf16 => {
-          println!("str_buf: {:?}", str_buf);
+          // println!("str_buf: {:?}", str_buf);
           let u16s = (0..str_buf.len() / 2)
             .map(|i| self.header.endianness.read_u16(&str_buf[i * 2..]).map_err(Error::Io))
             .collect::<Result<Vec<u16>>>()?;
