@@ -104,16 +104,18 @@ impl Label {
   pub fn set_value<S: Into<String>>(&mut self, val: S) -> Result<(), ()> {
     let string = val.into();
     let index = self.index as usize;
-    let txt2_str = self.lbl1_mut().msbt_mut().txt2
-      .as_mut()
-      .and_then(|t| t.strings.get_mut(index as usize));
-    match txt2_str {
-      Some(txt2_str) => {
+    let txt2 = self.lbl1_mut().msbt_mut().txt2.as_mut();
+    if let Some(txt2) = txt2 {
+      let txt2_str = txt2.strings.get_mut(index as usize);
+      if let Some(txt2_str) = txt2_str {
         *txt2_str = string;
-        Ok(())
-      },
-      None => Err(()),
+        txt2.update();
+
+        return Ok(());
+      }
     }
+
+    Err(())
   }
 
   /// Gets the value of this label.
