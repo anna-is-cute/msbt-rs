@@ -30,4 +30,15 @@ impl Nli1 {
   pub fn global_ids(&self) -> &BTreeMap<u32, u32> {
     &self.global_ids
   }
+
+  pub(crate) fn file_size(&self) -> usize {
+    let mut base = self.section.file_size();
+
+    if !self.global_ids.is_empty() {
+      base += std::mem::size_of_val(&self.id_count)
+        + std::mem::size_of::<u32>() * self.global_ids.len() * 2;
+    }
+
+    base
+  }
 }
