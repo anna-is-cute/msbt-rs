@@ -1,16 +1,24 @@
 use byteordered::{Endianness, Endian};
 
 use std::{
+  boxed::Box,
   collections::BTreeMap,
   io::{Read, Seek, SeekFrom, Write},
+  pin::Pin,
+  ptr::NonNull,
 };
 
 mod counter;
-mod error;
+pub mod error;
+pub mod section;
 
 use self::{
   counter::Counter,
   error::{Error, Result},
+  section::{
+    *,
+    lbl1::{Group, Label},
+  },
 };
 
 const HEADER_MAGIC: [u8; 8] = *b"MsgStdBn";
@@ -44,7 +52,7 @@ pub struct Msbt {
 }
 
 impl Msbt {
-  pub fn from_reader<R: Read + Seek>(reader: R) -> Result<Self> {
+  pub fn from_reader<R: Read + Seek>(reader: R) -> Result<Pin<Box<Self>>> {
     MsbtReader::new(reader).map(MsbtReader::into_msbt)
   }
 
@@ -256,8 +264,8 @@ impl<R: Read + Seek> MsbtReader<R> {
     Ok(msbt)
   }
 
-  fn into_msbt(self) -> Msbt {
-    Msbt {
+  fn into_msbt(self) -> Pin<Box<Msbt>> {
+    let msbt = Msbt {
       header: self.header,
       section_order: self.section_order,
       lbl1: self.lbl1,
@@ -266,7 +274,34 @@ impl<R: Read + Seek> MsbtReader<R> {
       atr1: self.atr1,
       tsy1: self.tsy1,
       txt2: self.txt2,
+    };
+    let mut pinned_msbt = Box::pin(msbt);
+
+    let msbt_ref: &mut Msbt = unsafe {
+      let mut_ref: Pin<&mut Msbt> = Pin::as_mut(&mut pinned_msbt);
+      Pin::get_unchecked_mut(mut_ref)
+    };
+    let ptr = NonNull::new(msbt_ref as *mut Msbt).unwrap();
+    if let Some(mut lbl1) = msbt_ref.lbl1.as_mut() {
+      lbl1.msbt = ptr;
     }
+    if let Some(mut nli1) = msbt_ref.nli1.as_mut() {
+      nli1.msbt = ptr;
+    }
+    if let Some(mut ato1) = msbt_ref.ato1.as_mut() {
+      ato1.msbt = ptr;
+    }
+    if let Some(mut atr1) = msbt_ref.atr1.as_mut() {
+      atr1.msbt = ptr;
+    }
+    if let Some(mut tsy1) = msbt_ref.tsy1.as_mut() {
+      tsy1.msbt = ptr;
+    }
+    if let Some(mut txt2) = msbt_ref.txt2.as_mut() {
+      txt2.msbt = ptr;
+    }
+
+    pinned_msbt
   }
 
   fn skip_padding(&mut self) -> Result<()> {
@@ -366,6 +401,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     }
 
     Ok(Lbl1 {
+      msbt: NonNull::dangling(),
       section,
       group_count,
       groups,
@@ -379,6 +415,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     self.reader.read_exact(&mut unknown).map_err(Error::Io)?;
 
     Ok(Atr1 {
+      msbt: NonNull::dangling(),
       section,
       _unknown: unknown,
     })
@@ -390,6 +427,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     self.reader.read_exact(&mut unknown).map_err(Error::Io)?;
 
     Ok(Ato1 {
+      msbt: NonNull::dangling(),
       section,
       _unknown: unknown,
     })
@@ -401,6 +439,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     self.reader.read_exact(&mut unknown).map_err(Error::Io)?;
 
     Ok(Tsy1 {
+      msbt: NonNull::dangling(),
       section,
       _unknown: unknown,
     })
@@ -450,6 +489,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     }
 
     Ok(Txt2 {
+      msbt: NonNull::dangling(),
       section,
       string_count: string_count as u32,
       strings,
@@ -474,6 +514,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     }
 
     Ok(Nli1 {
+      msbt: NonNull::dangling(),
       section,
       id_count,
       global_ids: map,
@@ -580,78 +621,4 @@ impl Header {
 pub enum Encoding {
   Utf8 = 0x00,
   Utf16 = 0x01,
-}
-
-#[derive(Debug)]
-pub struct Section {
-  pub magic: [u8; 4],
-  pub size: u32,
-  pub padding: [u8; 8],
-}
-
-#[derive(Debug)]
-pub struct Lbl1 {
-  pub section: Section,
-  pub group_count: u32,
-  pub groups: Vec<Group>,
-  pub labels: Vec<Label>,
-}
-
-#[derive(Debug)]
-pub struct Group {
-  pub label_count: u32,
-  pub offset: u32,
-}
-
-#[derive(Debug)]
-pub struct Label {
-  pub name: String,
-  pub index: u32,
-  pub checksum: u32,
-  pub value: String,
-  pub value_raw: Vec<u8>,
-}
-
-#[derive(Debug)]
-pub struct Nli1 {
-  pub section: Section,
-  pub id_count: u32,
-  pub global_ids: BTreeMap<u32, u32>,
-}
-
-#[derive(Debug)]
-pub struct Ato1 {
-  pub section: Section,
-  pub _unknown: Vec<u8>, // large collection of 0xFF
-}
-
-#[derive(Debug)]
-pub struct Atr1 {
-  pub section: Section,
-  pub _unknown: Vec<u8>, // tons of unknown data
-}
-
-#[derive(Debug)]
-pub struct Tsy1 {
-  pub section: Section,
-  pub _unknown: Vec<u8>, // tons of unknown data
-}
-
-#[derive(Debug)]
-pub struct Txt2 {
-  pub section: Section,
-  pub string_count: u32,
-  pub strings: Vec<String>,
-  pub raw_strings: Vec<Vec<u8>>,
-}
-
-impl Txt2 {
-  pub fn update_section(&mut self) {
-    self.string_count = self.strings.len() as u32;
-    let all_str_len = self.strings.iter().flat_map(|x| x.encode_utf16()).count() * 2;
-    let new_size = all_str_len // length of all strings
-      + self.string_count as usize * std::mem::size_of::<u32>() // all offsets
-      + std::mem::size_of_val(&self.string_count); // length of string count
-    self.section.size = new_size as u32;
-  }
 }
