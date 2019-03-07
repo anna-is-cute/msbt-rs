@@ -20,3 +20,11 @@ pub struct Section {
   pub size: u32,
   pub padding: [u8; 8],
 }
+
+impl Section {
+  pub(crate) fn file_size(&self) -> usize {
+    std::mem::size_of_val(&self.magic)
+      + std::mem::size_of_val(&self.size)
+      + std::mem::size_of_val(&self.padding)
+  }
+}

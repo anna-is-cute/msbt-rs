@@ -127,6 +127,25 @@ impl Msbt {
   pub fn txt2_mut(&mut self) -> Option<&mut Txt2> {
     self.txt2.as_mut()
   }
+
+  fn plus_padding(size: usize) -> usize {
+    let rem = size % 16;
+    if rem > 0 {
+      size + (16 - rem)
+    } else {
+      size
+    }
+  }
+
+  pub(crate) fn file_size(&self) -> usize {
+    self.header.calc_file_size()
+      + Msbt::plus_padding(self.lbl1.as_ref().map(|x| x.file_size()).unwrap_or(0))
+      + Msbt::plus_padding(self.nli1.as_ref().map(Nli1::file_size).unwrap_or(0))
+      + Msbt::plus_padding(self.ato1.as_ref().map(Ato1::file_size).unwrap_or(0))
+      + Msbt::plus_padding(self.atr1.as_ref().map(Atr1::file_size).unwrap_or(0))
+      + Msbt::plus_padding(self.tsy1.as_ref().map(Tsy1::file_size).unwrap_or(0))
+      + Msbt::plus_padding(self.txt2.as_ref().map(Txt2::file_size).unwrap_or(0))
+  }
 }
 
 #[derive(Debug)]
@@ -158,7 +177,9 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
     self.writer.write_all(&[encoding_byte, self.msbt.header._unknown_2]).map_err(Error::Io)?;
     self.msbt.header.endianness.write_u16(&mut self.writer, self.msbt.header.section_count).map_err(Error::Io)?;
     self.msbt.header.endianness.write_u16(&mut self.writer, self.msbt.header._unknown_3).map_err(Error::Io)?;
-    self.msbt.header.endianness.write_u32(&mut self.writer, self.msbt.header.file_size).map_err(Error::Io)?;
+    self.msbt.header.endianness.write_u32(&mut self.writer, self.msbt.file_size() as u32).map_err(Error::Io)?;
+    // FIXME: update this as changes are made
+    // self.msbt.header.endianness.write_u32(&mut self.writer, self.msbt.header.file_size).map_err(Error::Io)?;
     self.writer.write_all(&self.msbt.header.padding).map_err(Error::Io)
   }
 
@@ -709,6 +730,18 @@ impl Header {
 
   pub fn padding(&self) -> [u8; 10] {
     self.padding
+  }
+
+  pub(crate) fn calc_file_size(&self) -> usize {
+    std::mem::size_of_val(&self.magic)
+      + std::mem::size_of::<u16>() // endianness
+      + std::mem::size_of_val(&self._unknown_1)
+      + std::mem::size_of::<u8>() // encoding
+      + std::mem::size_of_val(&self._unknown_2)
+      + std::mem::size_of_val(&self.section_count)
+      + std::mem::size_of_val(&self._unknown_3)
+      + std::mem::size_of_val(&self.file_size)
+      + std::mem::size_of_val(&self.padding)
   }
 }
 

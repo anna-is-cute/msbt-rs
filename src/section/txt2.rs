@@ -77,4 +77,11 @@ impl Txt2 {
       + std::mem::size_of_val(&self.string_count); // length of string count
     self.section.size = new_size as u32;
   }
+
+  pub(crate) fn file_size(&self) -> usize {
+    self.section.file_size()
+      + std::mem::size_of_val(&self.string_count)
+      + std::mem::size_of::<u32>() * self.strings.len() // offsets
+      + std::mem::size_of::<u16>() * self.strings.iter().flat_map(|x| x.encode_utf16()).count()
+  }
 }

@@ -22,4 +22,8 @@ impl Atr1 {
   pub fn unknown_bytes(&self) -> &[u8] {
     &self._unknown
   }
+
+  pub(crate) fn file_size(&self) -> usize {
+    self.section.file_size() + self._unknown.len()
+  }
 }

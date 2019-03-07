@@ -40,6 +40,13 @@ impl Lbl1 {
   pub fn labels_mut(&mut self) -> &mut [Label] {
     &mut self.labels
   }
+
+  pub(crate) fn file_size(&self) -> usize {
+    self.section.file_size()
+      + std::mem::size_of_val(&self.group_count)
+      + self.groups.iter().map(&Group::file_size).sum::<usize>()
+      + self.labels.iter().map(&Label::file_size).sum::<usize>()
+  }
 }
 
 #[derive(Debug)]
@@ -55,6 +62,10 @@ impl Group {
 
   pub fn offset(&self) -> u32 {
     self.offset
+  }
+
+  pub(crate) fn file_size(&self) -> usize {
+    std::mem::size_of_val(&self.label_count) + std::mem::size_of_val(&self.offset)
   }
 }
 
@@ -136,5 +147,11 @@ impl Label {
 
   pub unsafe fn value_raw_unchecked(&self) -> &[u8] {
     &self.lbl1().msbt().txt2.as_ref().unwrap().raw_strings[self.index as usize]
+  }
+
+  pub(crate) fn file_size(&self) -> usize {
+    std::mem::size_of::<u8>() // name length
+      + self.name.as_bytes().len()
+      + std::mem::size_of_val(&self.index)
   }
 }
