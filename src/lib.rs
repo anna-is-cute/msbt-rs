@@ -41,14 +41,14 @@ pub enum SectionTag {
 
 #[derive(Debug)]
 pub struct Msbt {
-  pub header: Header,
-  pub section_order: Vec<SectionTag>,
-  pub lbl1: Option<Lbl1>,
-  pub nli1: Option<Nli1>,
-  pub ato1: Option<Ato1>,
-  pub atr1: Option<Atr1>,
-  pub tsy1: Option<Tsy1>,
-  pub txt2: Option<Txt2>,
+  pub(crate) header: Header,
+  pub(crate) section_order: Vec<SectionTag>,
+  pub(crate) lbl1: Option<Pin<Box<Lbl1>>>,
+  pub(crate) nli1: Option<Nli1>,
+  pub(crate) ato1: Option<Ato1>,
+  pub(crate) atr1: Option<Atr1>,
+  pub(crate) tsy1: Option<Tsy1>,
+  pub(crate) txt2: Option<Txt2>,
 }
 
 impl Msbt {
@@ -70,6 +70,62 @@ impl Msbt {
       }
     }
     Ok(())
+  }
+
+  pub fn header(&self) -> &Header {
+    &self.header
+  }
+
+  pub fn section_order(&self) -> &[SectionTag] {
+    &self.section_order
+  }
+
+  pub fn lbl1(&self) -> Option<&Pin<Box<Lbl1>>> {
+    self.lbl1.as_ref()
+  }
+
+  pub fn lbl1_mut(&mut self) -> Option<&mut Pin<Box<Lbl1>>> {
+    self.lbl1.as_mut()
+  }
+
+  pub fn nli1(&self) -> Option<&Nli1> {
+    self.nli1.as_ref()
+  }
+
+  pub fn nli1_mut(&mut self) -> Option<&mut Nli1> {
+    self.nli1.as_mut()
+  }
+
+  pub fn ato1(&self) -> Option<&Ato1> {
+    self.ato1.as_ref()
+  }
+
+  pub fn ato1_mut(&mut self) -> Option<&mut Ato1> {
+    self.ato1.as_mut()
+  }
+
+  pub fn atr1(&self) -> Option<&Atr1> {
+    self.atr1.as_ref()
+  }
+
+  pub fn atr1_mut(&mut self) -> Option<&mut Atr1> {
+    self.atr1.as_mut()
+  }
+
+  pub fn tsy1(&self) -> Option<&Tsy1> {
+    self.tsy1.as_ref()
+  }
+
+  pub fn tsy1_mut(&mut self) -> Option<&mut Tsy1> {
+    self.tsy1.as_mut()
+  }
+
+  pub fn txt2(&self) -> Option<&Txt2> {
+    self.txt2.as_ref()
+  }
+
+  pub fn txt2_mut(&mut self) -> Option<&mut Txt2> {
+    self.txt2.as_mut()
   }
 }
 
@@ -100,7 +156,7 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
       Encoding::Utf16 => 0x01,
     };
     self.writer.write_all(&[encoding_byte, self.msbt.header._unknown_2]).map_err(Error::Io)?;
-    self.msbt.header.endianness.write_u16(&mut self.writer, self.msbt.header.len).map_err(Error::Io)?;
+    self.msbt.header.endianness.write_u16(&mut self.writer, self.msbt.header.section_count).map_err(Error::Io)?;
     self.msbt.header.endianness.write_u16(&mut self.writer, self.msbt.header._unknown_3).map_err(Error::Io)?;
     self.msbt.header.endianness.write_u32(&mut self.writer, self.msbt.header.file_size).map_err(Error::Io)?;
     self.writer.write_all(&self.msbt.header.padding).map_err(Error::Io)
@@ -235,7 +291,7 @@ pub struct MsbtReader<R> {
   reader: R,
   section_order: Vec<SectionTag>,
   header: Header,
-  lbl1: Option<Lbl1>,
+  lbl1: Option<Pin<Box<Lbl1>>>,
   nli1: Option<Nli1>,
   ato1: Option<Ato1>,
   atr1: Option<Atr1>,
@@ -282,7 +338,7 @@ impl<R: Read + Seek> MsbtReader<R> {
       Pin::get_unchecked_mut(mut_ref)
     };
     let ptr = NonNull::new(msbt_ref as *mut Msbt).unwrap();
-    if let Some(mut lbl1) = msbt_ref.lbl1.as_mut() {
+    if let Some(lbl1) = msbt_ref.lbl1.as_mut() {
       lbl1.msbt = ptr;
     }
     if let Some(mut nli1) = msbt_ref.nli1.as_mut() {
@@ -361,7 +417,7 @@ impl<R: Read + Seek> MsbtReader<R> {
     }
   }
 
-  pub fn read_lbl1(&mut self) -> Result<Lbl1> {
+  pub fn read_lbl1(&mut self) -> Result<Pin<Box<Lbl1>>> {
     let section = self.read_section()?;
 
     if &section.magic != b"LBL1" {
@@ -391,22 +447,33 @@ impl<R: Read + Seek> MsbtReader<R> {
         let checksum = i as u32;
 
         labels.push(Label {
+          lbl1: NonNull::dangling(),
           name,
           index,
           checksum,
-          value: Default::default(), // value not parsed until later
-          value_raw: Default::default(),
         });
       }
     }
 
-    Ok(Lbl1 {
+    let lbl1 = Lbl1 {
       msbt: NonNull::dangling(),
       section,
       group_count,
       groups,
       labels,
-    })
+    };
+    let mut pinned_lbl1 = Box::pin(lbl1);
+
+    let lbl1_ref: &mut Lbl1 = unsafe {
+      let mut_ref: Pin<&mut Lbl1> = Pin::as_mut(&mut pinned_lbl1);
+      Pin::get_unchecked_mut(mut_ref)
+    };
+    let ptr = NonNull::new(lbl1_ref as *mut Lbl1).unwrap();
+    for mut label in &mut lbl1_ref.labels {
+      label.lbl1 = ptr;
+    }
+
+    Ok(pinned_lbl1)
   }
 
   pub fn read_atr1(&mut self) -> Result<Atr1> {
@@ -481,13 +548,6 @@ impl<R: Read + Seek> MsbtReader<R> {
       strings.push(value);
     }
 
-    if let Some(ref mut lbl1) = self.lbl1 {
-      for label in &mut lbl1.labels {
-        label.value = strings[label.index as usize].clone();
-        label.value_raw = raw_strings[label.index as usize].clone();
-      }
-    }
-
     Ok(Txt2 {
       msbt: NonNull::dangling(),
       section,
@@ -549,15 +609,15 @@ impl<R: Read + Seek> MsbtReader<R> {
 
 #[derive(Debug)]
 pub struct Header {
-  pub magic: [u8; 8],
-  pub endianness: Endianness,
-  pub _unknown_1: u16,
-  pub encoding: Encoding,
-  pub _unknown_2: u8,
-  pub len: u16,
-  pub _unknown_3: u16,
-  pub file_size: u32,
-  pub padding: [u8; 10],
+  pub(crate) magic: [u8; 8],
+  pub(crate) endianness: Endianness,
+  pub(crate) _unknown_1: u16,
+  pub(crate) encoding: Encoding,
+  pub(crate) _unknown_2: u8,
+  pub(crate) section_count: u16,
+  pub(crate) _unknown_3: u16,
+  pub(crate) file_size: u32,
+  pub(crate) padding: [u8; 10],
 }
 
 impl Header {
@@ -593,7 +653,7 @@ impl Header {
     reader.read_exact(&mut buf[..1]).map_err(Error::Io)?;
     let unknown_2 = buf[0];
 
-    let len = endianness.read_u16(&mut reader).map_err(Error::Io)?;
+    let section_count = endianness.read_u16(&mut reader).map_err(Error::Io)?;
 
     let unknown_3 = endianness.read_u16(&mut reader).map_err(Error::Io)?;
 
@@ -606,7 +666,7 @@ impl Header {
       magic,
       endianness,
       encoding,
-      len,
+      section_count,
       file_size,
       padding,
       _unknown_1: unknown_1,
@@ -614,10 +674,45 @@ impl Header {
       _unknown_3: unknown_3,
     })
   }
+
+  pub fn magic(&self) -> [u8; 8] {
+    self.magic
+  }
+
+  pub fn endianness(&self) -> Endianness {
+    self.endianness
+  }
+
+  pub fn unknown_1(&self) -> u16 {
+    self._unknown_1
+  }
+
+  pub fn encoding(&self) -> Encoding {
+    self.encoding
+  }
+
+  pub fn unknown_2(&self) -> u8 {
+    self._unknown_2
+  }
+
+  pub fn section_count(&self) -> u16 {
+    self.section_count
+  }
+
+  pub fn unknown_3(&self) -> u16 {
+    self._unknown_3
+  }
+
+  pub fn file_size(&self) -> u32 {
+    self.file_size
+  }
+
+  pub fn padding(&self) -> [u8; 10] {
+    self.padding
+  }
 }
 
-#[derive(Debug)]
-#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
   Utf8 = 0x00,
   Utf16 = 0x01,
