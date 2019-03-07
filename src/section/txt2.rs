@@ -69,7 +69,7 @@ impl Txt2 {
   //   unimplemented!() // FIXME
   // }
 
-  fn update(&mut self) {
+  pub(crate) fn update(&mut self) {
     self.string_count = self.strings.len() as u32;
     let all_str_len = self.strings.iter().flat_map(|x| x.encode_utf16()).count() * 2;
     let new_size = all_str_len // length of all strings
