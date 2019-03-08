@@ -157,7 +157,7 @@ impl Updates for Lbl1 {
 
 impl CalculatesSize for Lbl1 {
   fn calc_size(&self) -> usize {
-    self.section.file_size()
+    self.section.calc_size()
       + std::mem::size_of_val(&self.group_count)
       + self.groups.iter().map(&CalculatesSize::calc_size).sum::<usize>()
       + self.labels.iter().map(&CalculatesSize::calc_size).sum::<usize>()
