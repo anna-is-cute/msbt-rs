@@ -29,6 +29,6 @@ impl Ato1 {
 
 impl CalculatesSize for Ato1 {
   fn calc_size(&self) -> usize {
-    self.section.file_size() + self._unknown.len()
+    self.section.calc_size() + self._unknown.len()
   }
 }

@@ -29,6 +29,6 @@ impl Atr1 {
 
 impl CalculatesSize for Atr1 {
   fn calc_size(&self) -> usize {
-    self.section.file_size() + self._unknown.len()
+    self.section.calc_size() + self._unknown.len()
   }
 }

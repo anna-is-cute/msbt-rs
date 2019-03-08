@@ -37,7 +37,7 @@ impl Nli1 {
 
 impl CalculatesSize for Nli1 {
   fn calc_size(&self) -> usize {
-    let mut base = self.section.file_size();
+    let mut base = self.section.calc_size();
 
     if !self.global_ids.is_empty() {
       base += std::mem::size_of_val(&self.id_count)
