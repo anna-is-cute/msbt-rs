@@ -46,6 +46,7 @@ pub enum SectionTag {
 pub struct Msbt {
   pub(crate) header: Header,
   pub(crate) section_order: Vec<SectionTag>,
+  // pinned because child labels have a reference to lbl1
   pub(crate) lbl1: Option<Pin<Box<Lbl1>>>,
   pub(crate) nli1: Option<Nli1>,
   pub(crate) ato1: Option<Ato1>,
