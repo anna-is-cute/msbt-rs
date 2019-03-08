@@ -1,4 +1,8 @@
-use crate::Msbt;
+use crate::{
+  Msbt,
+  traits::{CalculatesSize, Updates},
+  updater::Updater,
+};
 use super::Section;
 
 use std::ptr::NonNull;
@@ -17,8 +21,8 @@ impl Lbl1 {
     unsafe { self.msbt.as_ref() }
   }
 
-  fn msbt_mut(&mut self) -> &mut Msbt {
-    unsafe { self.msbt.as_mut() }
+  fn msbt_mut(&mut self) -> Updater<Msbt> {
+    Updater::new(unsafe { self.msbt.as_mut() })
   }
 
   pub fn section(&self) -> &Section {
@@ -40,13 +44,6 @@ impl Lbl1 {
   pub fn labels_mut(&mut self) -> &mut [Label] {
     &mut self.labels
   }
-
-  pub(crate) fn file_size(&self) -> usize {
-    self.section.file_size()
-      + std::mem::size_of_val(&self.group_count)
-      + self.groups.iter().map(&Group::file_size).sum::<usize>()
-      + self.labels.iter().map(&Label::file_size).sum::<usize>()
-  }
 }
 
 #[derive(Debug)]
@@ -63,10 +60,6 @@ impl Group {
   pub fn offset(&self) -> u32 {
     self.offset
   }
-
-  pub(crate) fn file_size(&self) -> usize {
-    std::mem::size_of_val(&self.label_count) + std::mem::size_of_val(&self.offset)
-  }
 }
 
 #[derive(Debug)]
@@ -82,8 +75,8 @@ impl Label {
     unsafe { self.lbl1.as_ref() }
   }
 
-  fn lbl1_mut(&mut self) -> &mut Lbl1 {
-    unsafe { self.lbl1.as_mut() }
+  fn lbl1_mut(&mut self) -> Updater<Lbl1> {
+    Updater::new(unsafe { self.lbl1.as_mut() })
   }
 
   pub fn name(&self) -> &str {
@@ -115,13 +108,15 @@ impl Label {
   pub fn set_value<S: Into<String>>(&mut self, val: S) -> Result<(), ()> {
     let string = val.into();
     let index = self.index as usize;
-    let txt2 = self.lbl1_mut().msbt_mut().txt2.as_mut();
+
+    let mut lbl1_mut = self.lbl1_mut();
+    let mut msbt_mut = lbl1_mut.msbt_mut();
+    let txt2 = msbt_mut.txt2.as_mut();
+
     if let Some(txt2) = txt2 {
       let txt2_str = txt2.strings.get_mut(index as usize);
       if let Some(txt2_str) = txt2_str {
         *txt2_str = string;
-        txt2.update();
-
         return Ok(());
       }
     }
@@ -148,8 +143,35 @@ impl Label {
   pub unsafe fn value_raw_unchecked(&self) -> &[u8] {
     &self.lbl1().msbt().txt2.as_ref().unwrap().raw_strings[self.index as usize]
   }
+}
 
-  pub(crate) fn file_size(&self) -> usize {
+impl Updates for Lbl1 {
+  fn update(&mut self) {
+    let mut msbt_mut = self.msbt_mut();
+    let txt2 = msbt_mut.txt2.as_mut();
+    if let Some(txt2) = txt2 {
+      txt2.update();
+    }
+  }
+}
+
+impl CalculatesSize for Lbl1 {
+  fn calc_size(&self) -> usize {
+    self.section.file_size()
+      + std::mem::size_of_val(&self.group_count)
+      + self.groups.iter().map(&CalculatesSize::calc_size).sum::<usize>()
+      + self.labels.iter().map(&CalculatesSize::calc_size).sum::<usize>()
+  }
+}
+
+impl CalculatesSize for Group {
+  fn calc_size(&self) -> usize {
+    std::mem::size_of_val(&self.label_count) + std::mem::size_of_val(&self.offset)
+  }
+}
+
+impl CalculatesSize for Label {
+  fn calc_size(&self) -> usize {
     std::mem::size_of::<u8>() // name length
       + self.name.as_bytes().len()
       + std::mem::size_of_val(&self.index)

@@ -1,4 +1,7 @@
-use crate::Msbt;
+use crate::{
+  Msbt,
+  traits::CalculatesSize,
+};
 use super::Section;
 
 use std::{
@@ -30,8 +33,10 @@ impl Nli1 {
   pub fn global_ids(&self) -> &BTreeMap<u32, u32> {
     &self.global_ids
   }
+}
 
-  pub(crate) fn file_size(&self) -> usize {
+impl CalculatesSize for Nli1 {
+  fn calc_size(&self) -> usize {
     let mut base = self.section.file_size();
 
     if !self.global_ids.is_empty() {
