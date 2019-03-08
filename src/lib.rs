@@ -22,6 +22,7 @@ use self::{
     lbl1::{Group, Label},
   },
   traits::{CalculatesSize, Updates},
+  updater::Updater,
 };
 
 const HEADER_MAGIC: [u8; 8] = *b"MsgStdBn";
@@ -128,8 +129,8 @@ impl Msbt {
     self.txt2.as_ref()
   }
 
-  pub fn txt2_mut(&mut self) -> Option<&mut Txt2> {
-    self.txt2.as_mut()
+  pub fn txt2_mut(&mut self) -> Option<Updater<Txt2>> {
+    self.txt2.as_mut().map(Updater::new)
   }
 
   fn plus_padding(size: usize) -> usize {

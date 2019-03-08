@@ -57,7 +57,6 @@ impl Txt2 {
       },
       Encoding::Utf8 => self.raw_strings = self.strings.iter().map(|x| x.as_bytes().to_vec()).collect(),
     }
-    self.update();
   }
 
   pub fn raw_strings(&self) -> &[Vec<u8>] {
