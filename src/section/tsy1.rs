@@ -1,4 +1,7 @@
-use crate::Msbt;
+use crate::{
+  Msbt,
+  traits::CalculatesSize,
+};
 use super::Section;
 
 use std::ptr::NonNull;
@@ -22,8 +25,10 @@ impl Tsy1 {
   pub fn unknown_bytes(&self) -> &[u8] {
     &self._unknown
   }
+}
 
-  pub(crate) fn file_size(&self) -> usize {
+impl CalculatesSize for Tsy1 {
+  fn calc_size(&self) -> usize {
     self.section.file_size() + self._unknown.len()
   }
 }

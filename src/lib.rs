@@ -9,8 +9,10 @@ use std::{
 };
 
 mod counter;
+mod traits;
 pub mod error;
 pub mod section;
+pub mod updater;
 
 use self::{
   counter::Counter,
@@ -19,6 +21,7 @@ use self::{
     *,
     lbl1::{Group, Label},
   },
+  traits::{CalculatesSize, Updates},
 };
 
 const HEADER_MAGIC: [u8; 8] = *b"MsgStdBn";
@@ -136,15 +139,26 @@ impl Msbt {
       size
     }
   }
+}
 
-  pub(crate) fn file_size(&self) -> usize {
+impl CalculatesSize for Msbt {
+  // can't detect that Lbl1 is a Pin and has to be called in a redundant closure
+  #[allow(clippy::redundant_closure)]
+  fn calc_size(&self) -> usize {
     self.header.calc_file_size()
-      + Msbt::plus_padding(self.lbl1.as_ref().map(|x| x.file_size()).unwrap_or(0))
-      + Msbt::plus_padding(self.nli1.as_ref().map(Nli1::file_size).unwrap_or(0))
-      + Msbt::plus_padding(self.ato1.as_ref().map(Ato1::file_size).unwrap_or(0))
-      + Msbt::plus_padding(self.atr1.as_ref().map(Atr1::file_size).unwrap_or(0))
-      + Msbt::plus_padding(self.tsy1.as_ref().map(Tsy1::file_size).unwrap_or(0))
-      + Msbt::plus_padding(self.txt2.as_ref().map(Txt2::file_size).unwrap_or(0))
+      + Msbt::plus_padding(self.lbl1.as_ref().map(|x| x.calc_size()).unwrap_or(0))
+      + Msbt::plus_padding(self.nli1.as_ref().map(CalculatesSize::calc_size).unwrap_or(0))
+      + Msbt::plus_padding(self.ato1.as_ref().map(CalculatesSize::calc_size).unwrap_or(0))
+      + Msbt::plus_padding(self.atr1.as_ref().map(CalculatesSize::calc_size).unwrap_or(0))
+      + Msbt::plus_padding(self.tsy1.as_ref().map(CalculatesSize::calc_size).unwrap_or(0))
+      + Msbt::plus_padding(self.txt2.as_ref().map(CalculatesSize::calc_size).unwrap_or(0))
+  }
+}
+
+impl Updates for Msbt {
+  fn update(&mut self) {
+    self.header.file_size = self.calc_size() as u32;
+    self.header.section_count = self.section_order.len() as u16;
   }
 }
 
@@ -177,7 +191,7 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
     self.writer.write_all(&[encoding_byte, self.msbt.header._unknown_2]).map_err(Error::Io)?;
     self.msbt.header.endianness.write_u16(&mut self.writer, self.msbt.header.section_count).map_err(Error::Io)?;
     self.msbt.header.endianness.write_u16(&mut self.writer, self.msbt.header._unknown_3).map_err(Error::Io)?;
-    self.msbt.header.endianness.write_u32(&mut self.writer, self.msbt.file_size() as u32).map_err(Error::Io)?;
+    self.msbt.header.endianness.write_u32(&mut self.writer, self.msbt.calc_size() as u32).map_err(Error::Io)?;
     // FIXME: update this as changes are made
     // self.msbt.header.endianness.write_u32(&mut self.writer, self.msbt.header.file_size).map_err(Error::Io)?;
     self.writer.write_all(&self.msbt.header.padding).map_err(Error::Io)
@@ -750,3 +764,4 @@ pub enum Encoding {
   Utf8 = 0x00,
   Utf16 = 0x01,
 }
+
