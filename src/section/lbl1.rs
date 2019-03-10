@@ -143,6 +143,29 @@ impl Label {
   pub unsafe fn value_raw_unchecked(&self) -> &[u8] {
     &self.lbl1().msbt().txt2.as_ref().unwrap().raw_strings[self.index as usize]
   }
+
+  /// Sets the raw value of this label.
+  ///
+  /// This checks the Txt2 of the Msbt containing the Lbl1 of this label for this label's index,
+  /// then sets that index if it exists.
+  pub fn set_value_raw<S: Into<Vec<u8>>>(&mut self, val: S) -> Result<(), ()> {
+    let bytes = val.into();
+    let index = self.index as usize;
+
+    let mut lbl1_mut = self.lbl1_mut();
+    let mut msbt_mut = lbl1_mut.msbt_mut();
+    let txt2 = msbt_mut.txt2.as_mut();
+
+    if let Some(txt2) = txt2 {
+      let txt2_raw = txt2.raw_strings.get_mut(index as usize);
+      if let Some(txt2_raw) = txt2_raw {
+        *txt2_raw = bytes;
+        return Ok(());
+      }
+    }
+
+    Err(())
+  }
 }
 
 impl Updates for Lbl1 {
