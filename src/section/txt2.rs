@@ -75,7 +75,7 @@ impl Txt2 {
       },
       Encoding::Utf8 => self.raw_strings = strings.into_iter()
         .map(Into::into)
-        .map(|x| x.into_bytes())
+        .map(String::into_bytes)
         .collect(),
     }
   }
@@ -99,14 +99,14 @@ impl CalculatesSize for Txt2 {
     self.section.calc_size()
       + std::mem::size_of_val(&self.string_count)
       + std::mem::size_of::<u32>() * self.raw_strings.len() // offsets
-      + std::mem::size_of::<u16>() * self.raw_strings.iter().map(|x| x.len()).sum::<usize>()
+      + std::mem::size_of::<u16>() * self.raw_strings.iter().map(Vec::len).sum::<usize>()
   }
 }
 
 impl Updates for Txt2 {
   fn update(&mut self) {
     self.string_count = self.raw_strings.len() as u32;
-    let all_str_len = self.raw_strings.iter().map(|x| x.len()).count();
+    let all_str_len = self.raw_strings.iter().map(Vec::len).count();
     let new_size = all_str_len // length of all strings
       + self.string_count as usize * std::mem::size_of::<u32>() // all offsets
       + std::mem::size_of_val(&self.string_count); // length of string count
