@@ -106,7 +106,7 @@ impl CalculatesSize for Txt2 {
 impl Updates for Txt2 {
   fn update(&mut self) {
     self.string_count = self.raw_strings.len() as u32;
-    let all_str_len = self.raw_strings.iter().map(Vec::len).count();
+    let all_str_len = self.raw_strings.iter().map(Vec::len).sum::<usize>();
     let new_size = all_str_len // length of all strings
       + self.string_count as usize * std::mem::size_of::<u32>() // all offsets
       + std::mem::size_of_val(&self.string_count); // length of string count
