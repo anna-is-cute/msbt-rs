@@ -1,20 +1,23 @@
 use crate::{
   Msbt,
   Encoding,
+  error::{Error, Result},
   traits::{CalculatesSize, Updates},
 };
 use super::Section;
 
 use byteordered::Endian;
 
-use std::ptr::NonNull;
+use std::{
+  borrow::Cow,
+  ptr::NonNull,
+};
 
 #[derive(Debug)]
 pub struct Txt2 {
   pub(crate) msbt: NonNull<Msbt>,
   pub(crate) section: Section,
   pub(crate) string_count: u32,
-  pub(crate) strings: Vec<String>,
   pub(crate) raw_strings: Vec<Vec<u8>>,
 }
 
@@ -31,20 +34,35 @@ impl Txt2 {
     self.string_count
   }
 
-  pub fn strings(&self) -> &[String] {
-    &self.strings
+  pub fn strings(&self) -> Result<Vec<Cow<str>>> {
+    match self.msbt().header.encoding {
+      Encoding::Utf16 => {
+        self.raw_strings
+          .iter()
+          .map(|r| r.chunks(2)
+            .map(|bs| self.msbt().header.endianness.read_u16(bs).expect("reading from chunk failed"))
+            .collect::<Vec<u16>>())
+          .map(|s| String::from_utf16(&s).map(Cow::from).map_err(Error::InvalidUtf16))
+          .collect()
+      },
+      Encoding::Utf8 => {
+        self.raw_strings
+          .iter()
+          .map(|r| std::str::from_utf8(r.as_slice()).map(Cow::from).map_err(Error::InvalidBorrowedUtf8))
+          .collect()
+      }
+    }
   }
 
   pub fn set_strings<I, S>(&mut self, strings: I)
     where I: IntoIterator<Item = S>,
           S: Into<String>,
   {
-    self.strings = strings.into_iter().map(Into::into).collect();
     match self.msbt().header.encoding {
       Encoding::Utf16 => {
-        // FIXME: the single-byte argument bug is right here. must parse control sequences here
         let mut buf = [0; 2];
-        self.raw_strings = self.strings.iter()
+        self.raw_strings = strings.into_iter()
+          .map(Into::into)
           .map(|s| {
             s.encode_utf16()
               .flat_map(|u| {
@@ -55,7 +73,10 @@ impl Txt2 {
           })
           .collect();
       },
-      Encoding::Utf8 => self.raw_strings = self.strings.iter().map(|x| x.as_bytes().to_vec()).collect(),
+      Encoding::Utf8 => self.raw_strings = strings.into_iter()
+        .map(Into::into)
+        .map(|x| x.into_bytes())
+        .collect(),
     }
   }
 
@@ -77,15 +98,15 @@ impl CalculatesSize for Txt2 {
   fn calc_size(&self) -> usize {
     self.section.calc_size()
       + std::mem::size_of_val(&self.string_count)
-      + std::mem::size_of::<u32>() * self.strings.len() // offsets
-      + std::mem::size_of::<u16>() * self.strings.iter().flat_map(|x| x.encode_utf16()).count()
+      + std::mem::size_of::<u32>() * self.raw_strings.len() // offsets
+      + std::mem::size_of::<u16>() * self.raw_strings.iter().map(|x| x.len()).sum::<usize>()
   }
 }
 
 impl Updates for Txt2 {
   fn update(&mut self) {
-    self.string_count = self.strings.len() as u32;
-    let all_str_len = self.strings.iter().flat_map(|x| x.encode_utf16()).count() * 2;
+    self.string_count = self.raw_strings.len() as u32;
+    let all_str_len = self.raw_strings.iter().map(|x| x.len()).count();
     let new_size = all_str_len // length of all strings
       + self.string_count as usize * std::mem::size_of::<u32>() // all offsets
       + std::mem::size_of_val(&self.string_count); // length of string count
