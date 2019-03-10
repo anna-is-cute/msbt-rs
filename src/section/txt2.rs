@@ -99,7 +99,7 @@ impl CalculatesSize for Txt2 {
     self.section.calc_size()
       + std::mem::size_of_val(&self.string_count)
       + std::mem::size_of::<u32>() * self.raw_strings.len() // offsets
-      + std::mem::size_of::<u16>() * self.raw_strings.iter().map(Vec::len).sum::<usize>()
+      + self.raw_strings.iter().map(Vec::len).sum::<usize>()
   }
 }
 
