@@ -562,6 +562,7 @@ impl<R: Read + Seek> MsbtReader<R> {
       let str_len = next_str_end - offsets[i];
       let mut str_buf = vec![0; str_len as usize];
       self.reader.read_exact(&mut str_buf).map_err(Error::Io)?;
+      raw_strings.push(str_buf);
     }
 
     Ok(Txt2 {
