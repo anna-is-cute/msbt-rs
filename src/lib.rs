@@ -249,11 +249,6 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
 
   pub fn write_txt2(&mut self) -> Result<()> {
     if let Some(ref txt2) = self.msbt.txt2 {
-      let strings: Vec<Vec<u16>> = txt2.strings
-        .iter()
-        .map(|x| x.encode_utf16().collect::<Vec<_>>())
-        .collect();
-
       self.write_section(&txt2.section)?;
 
       // write string count
@@ -261,17 +256,15 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
 
       // write offsets
       let mut total = 0;
-      for s in &strings {
+      for s in &txt2.raw_strings {
         let offset = txt2.string_count * 4 + 4 + total;
-        total += s.len() as u32 * 2;
+        total += s.len() as u32;
         self.msbt.header.endianness.write_u32(&mut self.writer, offset).map_err(Error::Io)?;
       }
 
       // write strings
-      for s in &strings {
-        for &utf16_byte in s {
-          self.msbt.header.endianness.write_u16(&mut self.writer, utf16_byte).map_err(Error::Io)?;
-        }
+      for s in &txt2.raw_strings {
+        self.writer.write_all(&s).map_err(Error::Io)?;
       }
 
       self.write_padding()?;
@@ -554,7 +547,6 @@ impl<R: Read + Seek> MsbtReader<R> {
     let string_count = self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)? as usize;
 
     let mut offsets = Vec::with_capacity(string_count);
-    let mut strings = Vec::with_capacity(string_count);
     let mut raw_strings = Vec::with_capacity(string_count);
 
     for _ in 0..string_count {
@@ -570,26 +562,12 @@ impl<R: Read + Seek> MsbtReader<R> {
       let str_len = next_str_end - offsets[i];
       let mut str_buf = vec![0; str_len as usize];
       self.reader.read_exact(&mut str_buf).map_err(Error::Io)?;
-      let value = match self.header.encoding {
-        Encoding::Utf8 => String::from_utf8(str_buf).map_err(Error::InvalidUtf8)?,
-        Encoding::Utf16 => {
-          // println!("str_buf: {:?}", str_buf);
-          let u16s = (0..str_buf.len() / 2)
-            .map(|i| self.header.endianness.read_u16(&str_buf[i * 2..]).map_err(Error::Io))
-            .collect::<Result<Vec<u16>>>()?;
-          raw_strings.push(str_buf);
-          String::from_utf16(&u16s).map_err(Error::InvalidUtf16)?
-        },
-      };
-
-      strings.push(value);
     }
 
     Ok(Txt2 {
       msbt: NonNull::dangling(),
       section,
       string_count: string_count as u32,
-      strings,
       raw_strings,
     })
   }

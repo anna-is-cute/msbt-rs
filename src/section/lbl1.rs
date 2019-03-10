@@ -5,7 +5,10 @@ use crate::{
 };
 use super::Section;
 
-use std::ptr::NonNull;
+use std::{
+  borrow::Cow,
+  ptr::NonNull,
+};
 
 #[derive(Debug)]
 pub struct Lbl1 {
@@ -95,10 +98,11 @@ impl Label {
   ///
   /// Note that the value is not guaranteed to exist. The Msbt containing the Lbl1 of this label
   /// will have its Txt2 checked for this label's index, then that string returned if it exists.
-  pub fn value(&self) -> Option<&str> {
+  pub fn value(&self) -> Option<Cow<str>> {
     self.lbl1().msbt().txt2
       .as_ref()
-      .and_then(|t| t.strings.get(self.index as usize).map(AsRef::as_ref))
+      .and_then(|t| t.strings().ok())
+      .and_then(|ss| ss.get(self.index as usize).map(Clone::clone))
   }
 
   /// Sets the value of this label.
@@ -107,21 +111,7 @@ impl Label {
   /// then sets that index if it exists.
   pub fn set_value<S: Into<String>>(&mut self, val: S) -> Result<(), ()> {
     let string = val.into();
-    let index = self.index as usize;
-
-    let mut lbl1_mut = self.lbl1_mut();
-    let mut msbt_mut = lbl1_mut.msbt_mut();
-    let txt2 = msbt_mut.txt2.as_mut();
-
-    if let Some(txt2) = txt2 {
-      let txt2_str = txt2.strings.get_mut(index as usize);
-      if let Some(txt2_str) = txt2_str {
-        *txt2_str = string;
-        return Ok(());
-      }
-    }
-
-    Err(())
+    self.set_value_raw(string)
   }
 
   /// Gets the value of this label.
@@ -130,8 +120,8 @@ impl Label {
   ///
   /// This method will panic is the Msbt containing this label's Lbl1 does not have a Txt2 or if
   /// that Txt2 does not have a string at this label's index.
-  pub unsafe fn value_unchecked(&self) -> &str {
-    &self.lbl1().msbt().txt2.as_ref().unwrap().strings[self.index as usize]
+  pub unsafe fn value_unchecked(&self) -> Cow<str> {
+    self.lbl1().msbt().txt2.as_ref().unwrap().strings().unwrap()[self.index as usize].clone()
   }
 
   pub fn value_raw(&self) -> Option<&[u8]> {
