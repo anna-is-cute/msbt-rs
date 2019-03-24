@@ -47,6 +47,20 @@ impl Lbl1 {
   pub fn labels_mut(&mut self) -> &mut [Label] {
     &mut self.labels
   }
+
+  fn update_group_offsets(&mut self) {
+    let mut total = 0;
+    let group_len = self.groups.len() as u32;
+    for (i, group) in self.groups.iter_mut().enumerate() {
+      group.offset = group_len * group.calc_size() as u32
+        + std::mem::size_of::<u32>() as u32 // group count
+        + total;
+      total = self.labels
+        .iter()
+        .filter(|x| x.checksum == i as u32)
+        .fold(total, |current, lbl| current + lbl.calc_size() as u32);
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -65,7 +79,7 @@ impl Group {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Label {
   pub(crate) lbl1: NonNull<Lbl1>,
   pub(crate) name: String,
@@ -74,6 +88,8 @@ pub struct Label {
 }
 
 impl Label {
+  pub(crate) const HASH_MAGIC: u32 = 0x492;
+
   fn lbl1(&self) -> &Lbl1 {
     unsafe { self.lbl1.as_ref() }
   }
@@ -82,8 +98,22 @@ impl Label {
     Updater::new(unsafe { self.lbl1.as_mut() })
   }
 
+  pub(crate) fn update_checksum(&mut self) {
+    let hash: u32 = self.name.as_bytes()
+      .iter()
+      .fold(0, |hash, b| hash.overflowing_mul(Label::HASH_MAGIC).0.overflowing_add(u32::from(*b)).0);
+    self.checksum = hash % self.lbl1().group_count();
+  }
+
   pub fn name(&self) -> &str {
     &self.name
+  }
+
+  pub fn set_name<S>(&mut self, name: S)
+    where S: Into<String>,
+  {
+    self.name = name.into();
+    self.update_checksum();
   }
 
   pub fn index(&self) -> u32 {
@@ -160,6 +190,8 @@ impl Label {
 
 impl Updates for Lbl1 {
   fn update(&mut self) {
+    self.section.size = self.calc_size() as u32 - self.section.calc_size() as u32;
+    self.update_group_offsets();
     let mut msbt_mut = self.msbt_mut();
     let txt2 = msbt_mut.txt2.as_mut();
     if let Some(txt2) = txt2 {
