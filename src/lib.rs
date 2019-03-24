@@ -1,4 +1,4 @@
-use byteordered::{Endianness, Endian};
+#![feature(vec_remove_item)]
 
 use std::{
   boxed::Box,
@@ -8,8 +8,11 @@ use std::{
   ptr::NonNull,
 };
 
+use byteordered::{Endianness, Endian};
+
 mod counter;
 mod traits;
+pub mod builder;
 pub mod error;
 pub mod section;
 pub mod updater;
@@ -33,7 +36,7 @@ const HEADER_MAGIC: [u8; 8] = *b"MsgStdBn";
 const PADDING_CHAR: u8 = 0xAB;
 const PADDING_LENGTH: usize = 16;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SectionTag {
   Lbl1,
   Nli1,
@@ -89,8 +92,8 @@ impl Msbt {
     self.lbl1.as_ref()
   }
 
-  pub fn lbl1_mut(&mut self) -> Option<&mut Pin<Box<Lbl1>>> {
-    self.lbl1.as_mut()
+  pub fn lbl1_mut(&mut self) -> Option<Updater<Pin<Box<Lbl1>>>> {
+    self.lbl1.as_mut().map(Updater::new)
   }
 
   pub fn nli1(&self) -> Option<&Nli1> {
@@ -217,7 +220,9 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
       for group in &lbl1.groups {
         self.write_group(group)?;
       }
-      for label in &lbl1.labels {
+      let mut sorted_labels = lbl1.labels.clone(); // FIXME: don't clone
+      sorted_labels.sort_by_key(|l| l.checksum);
+      for label in &sorted_labels {
         self.writer.write_all(&[label.name.len() as u8]).map_err(Error::Io)?;
         self.writer.write_all(label.name.as_bytes()).map_err(Error::Io)?;
         self.msbt.header.endianness.write_u32(&mut self.writer, label.index).map_err(Error::Io)?;
@@ -287,7 +292,31 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
   pub fn write_atr1(&mut self) -> Result<()> {
     if let Some(ref atr1) = self.msbt.atr1 {
       self.write_section(&atr1.section)?;
-      self.writer.write_all(&atr1._unknown).map_err(Error::Io)?;
+      self.msbt.header.endianness.write_u32(&mut self.writer, atr1.string_count).map_err(Error::Io)?;
+      self.msbt.header.endianness.write_u32(&mut self.writer, atr1._unknown_1).map_err(Error::Io)?;
+
+      let mut offset = std::mem::size_of_val(&atr1.string_count)
+        + std::mem::size_of_val(&atr1._unknown_1)
+        + std::mem::size_of::<u32>() * atr1.strings.len();
+      for _ in 0..atr1.strings.len() {
+        self.msbt.header.endianness.write_u32(&mut self.writer, offset as u32).map_err(Error::Io)?;
+        offset += std::mem::size_of::<u32>();
+      }
+      for string in &atr1.strings {
+        match self.msbt.header.encoding() {
+          Encoding::Utf16 => {
+            let mut buf = [0; 2];
+            let raw_string: Vec<u8> = string.encode_utf16()
+              .flat_map(|u| {
+                self.msbt.header.endianness.write_u16(&mut buf[..], u).expect("failed to write to array");
+                buf.to_vec()
+              })
+              .collect();
+            self.writer.write_all(&raw_string).map_err(Error::Io)?;
+          },
+          Encoding::Utf8 => self.writer.write_all(string.as_bytes()).map_err(Error::Io)?,
+        }
+      }
 
       self.write_padding()?;
     }
@@ -508,13 +537,49 @@ impl<R: Read + Seek> MsbtReader<R> {
 
   pub fn read_atr1(&mut self) -> Result<Atr1> {
     let section = self.read_section()?;
-    let mut unknown = vec![0; section.size as usize];
-    self.reader.read_exact(&mut unknown).map_err(Error::Io)?;
+
+    let string_count = self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?;
+    let _unknown_1 = self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?;
+
+    let strings = if section.size == 8 {
+      Vec::new()
+    } else {
+      let mut offsets = Vec::with_capacity(string_count as usize);
+      for _ in 0..string_count {
+        offsets.push(self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?);
+      }
+
+      let mut strings = Vec::with_capacity(string_count as usize);
+      for i in 0..string_count {
+        let next_str_end = if i == string_count - 1 {
+          section.size
+        } else {
+          offsets[i as usize + 1]
+        };
+        let str_len = next_str_end - offsets[i as usize];
+        let mut str_buf = vec![0; str_len as usize];
+        self.reader.read_exact(&mut str_buf).map_err(Error::Io)?;
+        let string = match self.header.encoding {
+          Encoding::Utf16 => {
+            let u16s: Vec<u16> = str_buf.chunks(2)
+              .map(|bs| self.header.endianness.read_u16(bs).expect("reading from chunk failed"))
+              .collect();
+            String::from_utf16(&u16s).map_err(Error::InvalidUtf16)?
+          },
+          Encoding::Utf8 => String::from_utf8(str_buf).map_err(Error::InvalidUtf8)?,
+        };
+        strings.push(string);
+      }
+
+      strings
+    };
 
     Ok(Atr1 {
       msbt: NonNull::dangling(),
       section,
-      _unknown: unknown,
+      string_count,
+      _unknown_1,
+      strings,
     })
   }
 

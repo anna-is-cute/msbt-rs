@@ -14,6 +14,15 @@ pub struct Tsy1 {
 }
 
 impl Tsy1 {
+  pub fn new_unlinked<V: Into<Vec<u8>>>(unknown_bytes: V) -> Self {
+    let bytes = unknown_bytes.into();
+    Tsy1 {
+      msbt: NonNull::dangling(),
+      section: Section::new(*b"TSY1", bytes.len() as u32),
+      _unknown: bytes,
+    }
+  }
+
   pub fn msbt(&self) -> &Msbt {
     unsafe { self.msbt.as_ref() }
   }

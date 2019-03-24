@@ -21,6 +21,16 @@ pub struct Section {
   pub padding: [u8; 8],
 }
 
+impl Section {
+  pub fn new(magic: [u8; 4], size: u32) -> Self {
+    Section {
+      magic,
+      size,
+      padding: [0; 8],
+    }
+  }
+}
+
 impl crate::traits::CalculatesSize for Section {
   fn calc_size(&self) -> usize {
     std::mem::size_of_val(&self.magic)
