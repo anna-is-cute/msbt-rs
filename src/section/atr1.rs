@@ -68,6 +68,7 @@ impl CalculatesSize for Atr1 {
     self.section.calc_size()
       + std::mem::size_of_val(&self.string_count)
       + std::mem::size_of_val(&self._unknown_1)
-      + self.strings.iter().map(|x| x.as_bytes().len()).sum::<usize>() * multiplier
+      + std::mem::size_of::<u32>() * self.strings.len() // offsets
+      + self.strings.iter().map(|x| x.as_bytes().len()).sum::<usize>() * multiplier // strings
   }
 }
