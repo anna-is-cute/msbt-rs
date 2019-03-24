@@ -295,27 +295,32 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
       self.msbt.header.endianness.write_u32(&mut self.writer, atr1.string_count).map_err(Error::Io)?;
       self.msbt.header.endianness.write_u32(&mut self.writer, atr1._unknown_1).map_err(Error::Io)?;
 
-      let mut offset = std::mem::size_of_val(&atr1.string_count)
-        + std::mem::size_of_val(&atr1._unknown_1)
-        + std::mem::size_of::<u32>() * atr1.strings.len();
-      for _ in 0..atr1.strings.len() {
-        self.msbt.header.endianness.write_u32(&mut self.writer, offset as u32).map_err(Error::Io)?;
-        offset += std::mem::size_of::<u32>();
-      }
-      for string in &atr1.strings {
-        match self.msbt.header.encoding() {
+      let raw_strings: Vec<Vec<u8>> = atr1.strings
+        .iter()
+        .map(|string| match self.msbt.header.encoding() {
           Encoding::Utf16 => {
             let mut buf = [0; 2];
-            let raw_string: Vec<u8> = string.encode_utf16()
+            string.encode_utf16()
               .flat_map(|u| {
                 self.msbt.header.endianness.write_u16(&mut buf[..], u).expect("failed to write to array");
                 buf.to_vec()
               })
-              .collect();
-            self.writer.write_all(&raw_string).map_err(Error::Io)?;
+              .collect()
           },
-          Encoding::Utf8 => self.writer.write_all(string.as_bytes()).map_err(Error::Io)?,
-        }
+          Encoding::Utf8 => string.as_bytes().to_vec(),
+        })
+        .collect();
+
+      let mut offset = std::mem::size_of_val(&atr1.string_count)
+        + std::mem::size_of_val(&atr1._unknown_1)
+        + std::mem::size_of::<u32>() * atr1.strings.len();
+      for raw_string in &raw_strings {
+        self.msbt.header.endianness.write_u32(&mut self.writer, offset as u32).map_err(Error::Io)?;
+        offset += raw_string.len();
+      }
+
+      for raw_string in raw_strings {
+        self.writer.write_all(&raw_string).map_err(Error::Io)?;
       }
 
       self.write_padding()?;
