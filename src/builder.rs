@@ -200,7 +200,9 @@ impl MsbtBuilder {
   // }
 
   pub fn nli1(mut self, nli1: Nli1) -> Self {
-    self.section_order.remove_item(&SectionTag::Nli1);
+    if let Some(pos) = self.section_order.iter().position(|x| x == &SectionTag::Nli1) {
+      self.section_order.remove(pos);
+    }
     self.section_order.push(SectionTag::Nli1);
     self.nli1 = Some(nli1);
 
@@ -208,7 +210,9 @@ impl MsbtBuilder {
   }
 
   pub fn ato1(mut self, ato1: Ato1) -> Self {
-    self.section_order.remove_item(&SectionTag::Ato1);
+    if let Some(pos) = self.section_order.iter().position(|x| x == &SectionTag::Ato1) {
+      self.section_order.remove(pos);
+    }
     self.section_order.push(SectionTag::Ato1);
     self.ato1 = Some(ato1);
 
@@ -216,7 +220,9 @@ impl MsbtBuilder {
   }
 
   pub fn atr1(mut self, atr1: Atr1) -> Self {
-    self.section_order.remove_item(&SectionTag::Atr1);
+    if let Some(pos) = self.section_order.iter().position(|x| x == &SectionTag::Atr1) {
+      self.section_order.remove(pos);
+    }
     self.section_order.push(SectionTag::Atr1);
     self.atr1 = Some(atr1);
 
@@ -224,7 +230,9 @@ impl MsbtBuilder {
   }
 
   pub fn tsy1(mut self, tsy1: Tsy1) -> Self {
-    self.section_order.remove_item(&SectionTag::Tsy1);
+    if let Some(pos) = self.section_order.iter().position(|x| x == &SectionTag::Tsy1) {
+      self.section_order.remove(pos);
+    }
     self.section_order.push(SectionTag::Tsy1);
     self.tsy1 = Some(tsy1);
 
@@ -232,7 +240,9 @@ impl MsbtBuilder {
   }
 
   pub fn txt2(mut self, txt2: Txt2) -> Self {
-    self.section_order.remove_item(&SectionTag::Txt2);
+    if let Some(pos) = self.section_order.iter().position(|x| x == &SectionTag::Txt2) {
+      self.section_order.remove(pos);
+    }
     self.section_order.push(SectionTag::Txt2);
     self.txt2 = Some(txt2);
 
