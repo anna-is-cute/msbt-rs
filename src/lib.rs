@@ -1,5 +1,3 @@
-#![feature(vec_remove_item)]
-
 use std::{
   boxed::Box,
   collections::BTreeMap,
@@ -707,7 +705,7 @@ pub struct Header {
 }
 
 impl Header {
-  pub fn from_reader(mut reader: &mut Read) -> Result<Self> {
+  pub fn from_reader(mut reader: &mut dyn Read) -> Result<Self> {
     let mut buf = [0u8; 10];
     reader.read_exact(&mut buf[..8]).map_err(Error::Io)?;
 
