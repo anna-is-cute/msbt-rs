@@ -1,23 +1,23 @@
-use failure_derive::Fail;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error {
-  #[fail(display = "io error: {}", _0)]
+  #[error("io error: {0}")]
   Io(std::io::Error),
-  #[fail(display = "invalid magic bytes")]
+  #[error("invalid magic bytes")]
   InvalidMagic,
-  #[fail(display = "invalid BOM")]
+  #[error("invalid BOM")]
   InvalidBom,
-  #[fail(display = "invalid encoding: {}", _0)]
+  #[error("invalid encoding: {0}")]
   InvalidEncoding(u8),
-  #[fail(display = "invalid utf-8: {}", _0)]
+  #[error("invalid utf-8: {0}")]
   InvalidUtf8(std::string::FromUtf8Error),
-  #[fail(display = "invalid borrowed utf-8: {}", _0)]
+  #[error("invalid borrowed utf-8: {0}")]
   InvalidBorrowedUtf8(std::str::Utf8Error),
-  #[fail(display = "invalid utf-16: {}", _0)]
+  #[error("invalid utf-16: {0}")]
   InvalidUtf16(std::string::FromUtf16Error),
-  #[fail(display = "invalid section header: {:?}", _0)]
+  #[error("invalid section header: {0:?}")]
   InvalidSection([u8; 4]),
 }
