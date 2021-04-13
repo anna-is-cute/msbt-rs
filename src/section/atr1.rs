@@ -1,5 +1,4 @@
 use crate::{
-  Encoding,
   Msbt,
   traits::{CalculatesSize, Updates},
 };
@@ -11,26 +10,12 @@ use std::ptr::NonNull;
 pub struct Atr1 {
   pub(crate) msbt: NonNull<Msbt>,
   pub(crate) section: Section,
-  pub(crate) string_count: u32,
-  pub(crate) _unknown_1: u32,
-  pub(crate) strings: Vec<String>,
+  pub(crate) entry_count: u32,
+  pub(crate) entry_size: u32,
+  pub(crate) entries: Vec<Vec<u8>>,
 }
 
 impl Atr1 {
-  pub fn new_unlinked<I, S>(string_count: u32, _unknown_1: u32, strings: I) -> Self
-    where I: IntoIterator<Item = S>,
-          S: Into<String>,
-  {
-    let strings: Vec<String> = strings.into_iter().map(Into::into).collect();
-    Atr1 {
-      msbt: NonNull::dangling(),
-      section: Section::new(*b"ATR1", 0),
-      string_count,
-      _unknown_1,
-      strings,
-    }
-  }
-
   pub fn msbt(&self) -> &Msbt {
     unsafe { self.msbt.as_ref() }
   }
@@ -39,36 +24,31 @@ impl Atr1 {
     &self.section
   }
 
-  pub fn string_count(&self) -> u32 {
-    self.string_count
+  pub fn entry_count(&self) -> u32 {
+    self.entry_count
+  }
+  
+  pub fn entry_size(&self) -> u32 {
+    self.entry_size
   }
 
-  pub fn unknown_1(&self) -> u32 {
-    self._unknown_1
-  }
-
-  pub fn strings(&self) -> Vec<&str> {
-    self.strings.iter().map(AsRef::as_ref).collect()
-  }
-}
-
-impl Updates for Atr1 {
-  fn update(&mut self) {
-    let size = self.calc_size() - self.section.calc_size();
-    self.section.size = size as u32;
+  pub fn entries(&self) -> Vec<Vec<u8>> {
+    self.entries.clone()
   }
 }
 
 impl CalculatesSize for Atr1 {
   fn calc_size(&self) -> usize {
-    let multiplier = match self.msbt().header().encoding() {
-      Encoding::Utf8 => 1,
-      Encoding::Utf16 => 2,
-    };
     self.section.calc_size()
-      + std::mem::size_of_val(&self.string_count)
-      + std::mem::size_of_val(&self._unknown_1)
-      + std::mem::size_of::<u32>() * self.strings.len() // offsets
-      + self.strings.iter().map(|x| x.as_bytes().len()).sum::<usize>() * multiplier // strings
+    + std::mem::size_of_val(&self.entry_count)
+    + std::mem::size_of_val(&self.entry_size)
+    + std::mem::size_of::<u8>() * (self.entry_count * self.entry_size) as usize
+  }
+}
+
+impl Updates for Atr1 {
+  fn update(&mut self) {
+    self.entry_count = self.entries.len() as u32;
+    self.section.size = self.calc_size() as u32 - self.section.calc_size() as u32;
   }
 }

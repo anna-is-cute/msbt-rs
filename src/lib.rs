@@ -31,7 +31,6 @@ const HEADER_MAGIC: [u8; 8] = *b"MsgStdBn";
 // const LABEL_MAX_LEN: u8 = 64;
 // const BYTE_ORDER_OFFSET: u8 = 0x8;
 // const HEADER_SIZE: u8 = 0x20;
-const PADDING_CHAR: u8 = 0xAB;
 const PADDING_LENGTH: usize = 16;
 
 #[derive(Debug, PartialEq)]
@@ -47,6 +46,7 @@ pub enum SectionTag {
 #[derive(Debug)]
 pub struct Msbt {
   pub(crate) header: Header,
+  pub(crate) pad_byte: u8,
   pub(crate) section_order: Vec<SectionTag>,
   // pinned because child labels have a reference to lbl1
   pub(crate) lbl1: Option<Pin<Box<Lbl1>>>,
@@ -135,9 +135,9 @@ impl Msbt {
   }
 
   fn plus_padding(size: usize) -> usize {
-    let rem = size % 16;
+    let rem = size % PADDING_LENGTH;
     if rem > 0 {
-      size + (16 - rem)
+      size + (PADDING_LENGTH - rem)
     } else {
       size
     }
@@ -290,35 +290,10 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
   pub fn write_atr1(&mut self) -> Result<()> {
     if let Some(ref atr1) = self.msbt.atr1 {
       self.write_section(&atr1.section)?;
-      self.msbt.header.endianness.write_u32(&mut self.writer, atr1.string_count).map_err(Error::Io)?;
-      self.msbt.header.endianness.write_u32(&mut self.writer, atr1._unknown_1).map_err(Error::Io)?;
-
-      let raw_strings: Vec<Vec<u8>> = atr1.strings
-        .iter()
-        .map(|string| match self.msbt.header.encoding() {
-          Encoding::Utf16 => {
-            let mut buf = [0; 2];
-            string.encode_utf16()
-              .flat_map(|u| {
-                self.msbt.header.endianness.write_u16(&mut buf[..], u).expect("failed to write to array");
-                buf.to_vec()
-              })
-              .collect()
-          },
-          Encoding::Utf8 => string.as_bytes().to_vec(),
-        })
-        .collect();
-
-      let mut offset = std::mem::size_of_val(&atr1.string_count)
-        + std::mem::size_of_val(&atr1._unknown_1)
-        + std::mem::size_of::<u32>() * atr1.strings.len();
-      for raw_string in &raw_strings {
-        self.msbt.header.endianness.write_u32(&mut self.writer, offset as u32).map_err(Error::Io)?;
-        offset += raw_string.len();
-      }
-
-      for raw_string in raw_strings {
-        self.writer.write_all(&raw_string).map_err(Error::Io)?;
+      self.msbt.header.endianness.write_u32(&mut self.writer, atr1.entry_count).map_err(Error::Io)?;
+      self.msbt.header.endianness.write_u32(&mut self.writer, atr1.entry_size).map_err(Error::Io)?;
+      for entry in atr1.entries() {
+        self.writer.write_all(&entry).map_err(Error::Io)?;
       }
 
       self.write_padding()?;
@@ -344,7 +319,7 @@ impl<'a, W: Write> MsbtWriter<'a, W> {
       return Ok(());
     }
 
-    self.writer.write_all(&vec![PADDING_CHAR; PADDING_LENGTH - remainder]).map_err(Error::Io)
+    self.writer.write_all(&vec![self.msbt.pad_byte; PADDING_LENGTH - remainder]).map_err(Error::Io)
   }
 }
 
@@ -359,6 +334,7 @@ pub struct MsbtReader<R> {
   atr1: Option<Atr1>,
   tsy1: Option<Tsy1>,
   txt2: Option<Txt2>,
+  pad_byte: u8,
 }
 
 impl<R: Read + Seek> MsbtReader<R> {
@@ -375,6 +351,7 @@ impl<R: Read + Seek> MsbtReader<R> {
       tsy1: None,
       txt2: None,
       section_order: Vec::with_capacity(6),
+      pad_byte: 0,
     };
 
     msbt.read_sections()?;
@@ -385,6 +362,7 @@ impl<R: Read + Seek> MsbtReader<R> {
   fn into_msbt(self) -> Pin<Box<Msbt>> {
     let msbt = Msbt {
       header: self.header,
+      pad_byte: self.pad_byte,
       section_order: self.section_order,
       lbl1: self.lbl1,
       nli1: self.nli1,
@@ -423,17 +401,15 @@ impl<R: Read + Seek> MsbtReader<R> {
   }
 
   fn skip_padding(&mut self) -> Result<()> {
-    let mut buf = [0; 16];
-    loop {
-      let read = self.reader.read(&mut buf).map_err(Error::Io)?;
-      if read == 0 {
-        return Ok(());
-      }
-      if let Some(i) = buf[..read].iter().position(|&x| x != PADDING_CHAR) {
-        self.reader.seek(SeekFrom::Current(i as i64 - 16)).map_err(Error::Io)?;
-        return Ok(());
-      }
+    let pos = self.reader.stream_position().map_err(Error::Io)?;
+    let remainder = pos % PADDING_LENGTH as u64;
+    if remainder > 0 {
+      let mut buf = [0; 1];
+      self.reader.read_exact(&mut buf).map_err(Error::Io)?;
+      self.reader.seek(SeekFrom::Start(pos + PADDING_LENGTH as u64 - remainder)).map_err(Error::Io)?;
+      self.pad_byte = buf[0];
     }
+    Ok(())
   }
 
   pub fn read_sections(&mut self) -> Result<()> {
@@ -541,48 +517,26 @@ impl<R: Read + Seek> MsbtReader<R> {
   pub fn read_atr1(&mut self) -> Result<Atr1> {
     let section = self.read_section()?;
 
-    let string_count = self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?;
-    let _unknown_1 = self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?;
+    if &section.magic != b"ATR1" {
+      return Err(Error::InvalidMagic);
+    }
 
-    let strings = if section.size == 8 {
-      Vec::new()
-    } else {
-      let mut offsets = Vec::with_capacity(string_count as usize);
-      for _ in 0..string_count {
-        offsets.push(self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?);
-      }
+    let entry_count = self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?;
+    let entry_size = self.header.endianness.read_u32(&mut self.reader).map_err(Error::Io)?;
 
-      let mut strings = Vec::with_capacity(string_count as usize);
-      for i in 0..string_count {
-        let next_str_end = if i == string_count - 1 {
-          section.size
-        } else {
-          offsets[i as usize + 1]
-        };
-        let str_len = next_str_end - offsets[i as usize];
-        let mut str_buf = vec![0; str_len as usize];
-        self.reader.read_exact(&mut str_buf).map_err(Error::Io)?;
-        let string = match self.header.encoding {
-          Encoding::Utf16 => {
-            let u16s: Vec<u16> = str_buf.chunks(2)
-              .map(|bs| self.header.endianness.read_u16(bs).expect("reading from chunk failed"))
-              .collect();
-            String::from_utf16(&u16s).map_err(Error::InvalidUtf16)?
-          },
-          Encoding::Utf8 => String::from_utf8(str_buf).map_err(Error::InvalidUtf8)?,
-        };
-        strings.push(string);
-      }
-
-      strings
-    };
+    let mut entries = Vec::new();
+    while entries.len() < entry_count as usize {
+      let mut entry = vec![0; entry_size as usize];
+      self.reader.read_exact(&mut entry).map_err(Error::Io)?;
+      entries.push(entry);
+    }
 
     Ok(Atr1 {
       msbt: NonNull::dangling(),
       section,
-      string_count,
-      _unknown_1,
-      strings,
+      entry_count,
+      entry_size,
+      entries,
     })
   }
 

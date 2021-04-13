@@ -24,6 +24,7 @@ pub struct MsbtBuilder {
   ato1: Option<Ato1>,
   atr1: Option<Atr1>,
   tsy1: Option<Tsy1>,
+  pad_byte: u8,
 }
 
   // macro_rules! add_item {
@@ -90,6 +91,7 @@ impl MsbtBuilder {
       ato1: None,
       atr1: None,
       tsy1: None,
+      pad_byte: 0,
     }
   }
 
@@ -107,6 +109,7 @@ impl MsbtBuilder {
       atr1: self.atr1,
       tsy1: self.tsy1,
       txt2: self.txt2,
+      pad_byte: self.pad_byte,
     };
     let mut pinned_msbt = Box::pin(msbt);
 
