@@ -38,6 +38,27 @@ pub struct MsbtBuilder {
   //   };
   // }
 
+impl From<Msbt> for MsbtBuilder {
+    fn from(built: Msbt) -> Self {
+        MsbtBuilder {
+            section_order: built.section_order,
+            header: built.header,
+            lbl1: built.lbl1,
+            txt2: built.txt2,
+            nli1: built.nli1,
+            ato1: built.ato1,
+            atr1: built.atr1,
+            tsy1: built.tsy1
+        }
+    }
+}
+
+impl From<Pin<Box<Msbt>>> for MsbtBuilder {
+    fn from(pinned: Pin<Box<Msbt>>) -> Self {
+        Self::from(*Pin::into_inner(pinned))
+    }
+}
+
 impl MsbtBuilder {
   pub fn new(endianness: Endianness, encoding: Encoding, group_count: Option<u32>) -> Self {
     let lbl1 = group_count
